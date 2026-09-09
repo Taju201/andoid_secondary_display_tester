@@ -1,0 +1,73 @@
+name: Release
+
+# Builds the Windows desktop app and publishes it as a downloadable zip.
+#
+# - Pushing a `v*` tag creates a GitHub Release with the zip attached.
+# - Running manually (or any push to main) uploads the same zip as a build
+#   artifact, so there is always a recent build to download without tagging.
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # The project requires Dart >=3.11 (see pubspec.yaml). If `stable` is
+          # ever older than that, pin `flutter-version` here instead.
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $stage = "dist/adb-display-tester-windows-x64"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          # The whole runner directory is required — the .exe alone will not
+          # start without flutter_windows.dll, icudtl.dat and data/.
+          Copy-Item -Recurse -Force `
+            "build/windows/x64/runner/Release/*" $stage
+          Copy-Item -Force README.md $stage
+          Compress-Archive -Path $stage -DestinationPath `
+            "dist/adb-display-tester-windows-x64.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: adb-display-tester-windows-x64
+          path: dist/adb-display-tester-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh release create "${{ github.ref_name }}"
+          "dist/adb-display-tester-windows-x64.zip"
+          --title "${{ github.ref_name }}"
+          --generate-notes

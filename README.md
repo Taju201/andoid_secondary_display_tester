@@ -2,6 +2,29 @@
 
 Desktop Flutter application for testing Android secondary displays from Windows and Linux using ADB.
 
+## Download
+
+Prebuilt Windows builds are attached to each
+[GitHub Release](https://github.com/Taju201/andoid_secondary_display_tester/releases).
+
+1. Download `adb-display-tester-windows-x64.zip`.
+2. Extract the whole folder — the `.exe` will not start on its own. It needs
+   `flutter_windows.dll`, `icudtl.dat` and the `data/` directory that ship
+   alongside it.
+3. Run `andoid_secondary_display_tester.exe`.
+
+The app does not bundle ADB. Install
+[Android platform-tools](https://developer.android.com/tools/releases/platform-tools)
+and make sure `adb` is on your `PATH`, or point the app at an `adb` executable
+through the gear icon next to the ADB status.
+
+Windows SmartScreen will warn about an unsigned executable — the builds are not
+code-signed. Choose *More info* → *Run anyway*, or build from source.
+
+Untagged builds from `main` are also available as workflow artifacts on the
+[Actions tab](https://github.com/Taju201/andoid_secondary_display_tester/actions),
+though those require being signed in to GitHub to download.
+
 ## Overview
 
 Android's built-in secondary display emulation in Developer Options is useful, but it does not provide desktop touch input. This project fills that gap by mirroring a selected Android display into a desktop window and forwarding pointer interactions back to the device through ADB.
