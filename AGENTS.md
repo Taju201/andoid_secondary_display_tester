@@ -53,6 +53,8 @@ Organize the app around these core layers:
    - Poll screenshots for the selected display.
    - Decode frames off the UI thread where practical.
    - Expose frame, size, rotation, refresh state, and error state.
+   - Fall back to overlay-crop capture when direct capture is refused, and
+     expose which mode is active so the UI can flag degraded frames.
 
 4. `InteractionRecorder`
    - Record tap/swipe/long-press actions with timing.
@@ -101,6 +103,24 @@ Display-targeted input should assume modern Android shell support such as:
 - `input -d <displayId> tap x y`
 - `input -d <displayId> swipe x1 y1 x2 y2 duration`
 
+### Simulated secondary displays
+
+`screencap -d` takes a **SurfaceFlinger** display id, not the logical display id
+from `dumpsys display`. Developer Options "simulated secondary displays" have no
+SurfaceFlinger display of their own — they are windows composited onto the
+primary display — so `screencap` refuses them with exit code **0** and a
+plain-text `Failed to take screenshot. Status: -2` on stdout. Screenshot
+payloads must therefore be validated against the PNG signature, not the exit
+code.
+
+For those displays the app captures the host display and crops the overlay's
+window rect, read from the `OverlayDisplayAdapter` section of `dumpsys display`
+(`mWindowParams={(x,y)(WxH) ...}`) and paired to a logical display id through
+`uniqueId "overlay:<n>"`. This is a lower-fidelity frame — the overlay is
+composited at `alpha=0.8`, its title is drawn over its own content, and it may
+be scaled down — so the mode must stay visible in the UI. Input is unaffected
+and still targets the logical display at its full resolution.
+
 ## Testing Expectations
 
 Add automated coverage for:
@@ -110,7 +130,8 @@ Add automated coverage for:
 - Display parsing.
 - Coordinate mapping with scaling and letterboxing.
 - Input command generation.
-- Capture loop recovery behavior.
+- Capture loop recovery behavior, including the automatic fallback to overlay-crop capture.
+- Overlay window parsing and crop-region geometry.
 - Recording JSON serialization and replay timing.
 
 Manual checks should verify:
@@ -125,4 +146,4 @@ Manual checks should verify:
 
 - This repo may stay partially scaffolded while the desktop app is being bootstrapped.
 - If Flutter CLI behavior is slow or unreliable in the environment, preserve progress in source files and docs rather than blocking on tooling.
-- Do not add fallback support for unsupported Android devices unless the task explicitly expands scope.
+- Do not add fallback support for unsupported Android devices unless the task explicitly expands scope. The overlay-crop capture mode is an explicit exception — it is the only way to mirror a simulated secondary display, and it should not be removed as "compatibility fallback logic".

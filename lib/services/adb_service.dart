@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../utils/png_payload.dart';
+
 /// Service for running ADB commands and interacting with Android devices.
 ///
 /// All ADB commands are executed through this service, making it the single
@@ -98,8 +100,24 @@ class AdbService {
   /// Capture a screenshot for a specific display.
   ///
   /// Returns raw PNG bytes from `screencap -p -d <displayId>`.
+  ///
+  /// Throws [ScreencapException] when the device accepts the command but
+  /// declines to capture the display. `screencap` signals that failure by
+  /// exiting 0 and writing a plain-text message to stdout, so a non-zero exit
+  /// code is not enough to detect it — the payload has to be checked for a PNG
+  /// signature or the error text ends up being handed to the image decoder.
   Future<Uint8List> captureScreenshot(String serial, int displayId) async {
-    return execOutBytes(serial, ['screencap', '-p', '-d', '$displayId']);
+    final bytes =
+        await execOutBytes(serial, ['screencap', '-p', '-d', '$displayId']);
+
+    if (!isPngData(bytes)) {
+      throw ScreencapException(
+        displayId: displayId,
+        reason: describeScreencapFailure(bytes),
+      );
+    }
+
+    return bytes;
   }
 
   /// Send a tap input to a specific display.
@@ -163,4 +181,20 @@ class AdbException implements Exception {
   @override
   String toString() =>
       'AdbException: Command "$command" failed (exit $exitCode): $stderr';
+}
+
+/// Thrown when `screencap` runs successfully but refuses to capture a display.
+///
+/// This is the expected failure for Developer Options simulated displays:
+/// `screencap -d` addresses SurfaceFlinger displays, and a simulated display is
+/// only a window composited onto the host display, so it has no SurfaceFlinger
+/// display of its own to capture.
+class ScreencapException implements Exception {
+  final int displayId;
+  final String reason;
+
+  const ScreencapException({required this.displayId, required this.reason});
+
+  @override
+  String toString() => 'Display $displayId cannot be captured directly: $reason';
 }

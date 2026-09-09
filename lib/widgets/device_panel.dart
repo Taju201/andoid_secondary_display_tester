@@ -363,7 +363,11 @@ class DevicePanel extends StatelessWidget {
 
     final device = deviceSession.selectedDevice.value;
     if (device != null) {
-      mirrorController.startCapture(device.serial, display.id);
+      mirrorController.startCapture(
+        device.serial,
+        display.id,
+        overlayResolver: () => deviceSession.resolveOverlaySource(display.id),
+      );
     }
   }
 

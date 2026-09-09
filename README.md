@@ -72,10 +72,60 @@ The app is intended to be structured around four main areas:
 1. The user selects an Android device.
 2. The app queries the device for available displays.
 3. The user selects one display as the active target.
-4. The app repeatedly captures that display through `adb exec-out`.
+4. The app repeatedly captures that display through `adb exec-out` — see [Capture Modes](#capture-modes).
 5. The latest frame is rendered inside a desktop viewer.
 6. Desktop pointer input is translated back into the Android display's coordinate space.
 7. ADB shell input commands are sent to the device using the selected display id.
+
+## Capture Modes
+
+The app picks how to capture a display automatically. There is no setting to
+choose between them.
+
+### Direct capture
+
+`adb exec-out screencap -p -d <displayId>`, which is what real displays support.
+Full fidelity, and the default for every display.
+
+### Overlay crop (automatic fallback)
+
+`screencap -d` addresses **SurfaceFlinger** displays. A Developer Options
+"simulated secondary display" is not one — the system composites it as a
+floating window on the primary display, so `screencap` refuses it:
+
+```console
+$ adb exec-out screencap -p -d 2
+Failed to take screenshot. Status: -2
+Capturing failed.
+```
+
+Note that `screencap` exits 0 here and writes that text to stdout, so the exit
+code alone does not reveal the failure.
+
+When direct capture fails, the app looks the display up in the
+`OverlayDisplayAdapter` section of `dumpsys display`. If it turns out to be an
+overlay, the app switches to capturing the **host** display and cropping the
+overlay's window region out of each frame. The viewer shows an amber
+`Overlay crop` badge whenever this mode is active, because the frames are
+lower fidelity than a direct capture:
+
+- The overlay window is composited at `alpha=0.8`, so cropped colors are
+  blended with whatever is behind it on the host display.
+- The overlay's title (`Overlay #1: 720x480, 142 dpi`) is drawn over the top of
+  its own content and lands in the crop.
+- If the overlay is scaled below its logical resolution, so is the mirror. The
+  badge shows the scale when it is under 100%.
+- Anything the system draws above the overlay — a dialog, the notification
+  shade, an IME — lands in the crop too.
+- The host display has to be awake. When the device's screen sleeps, the host
+  screenshot goes black and so does the mirror.
+
+Touch input is not affected by the mode. Pointer coordinates are always mapped
+against the display's own logical resolution and sent with
+`input -d <displayId>`, independent of how the frame was obtained.
+
+The overlay's position and size are re-read every couple of seconds, so moving
+or resizing the overlay on the device keeps mirroring correctly.
 
 ## Recording Format
 

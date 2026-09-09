@@ -2,6 +2,7 @@ import 'package:signals/signals.dart';
 
 import '../models/device.dart';
 import '../models/display_info.dart';
+import '../models/overlay_window.dart';
 import '../services/adb_parser.dart';
 import '../services/adb_service.dart';
 
@@ -31,6 +32,9 @@ class DeviceSession {
 
   /// List of displays available on the selected device.
   final displays = signal<List<DisplayInfo>>([]);
+
+  /// Simulated (Developer Options) overlay displays on the selected device.
+  final overlayWindows = signal<List<OverlayWindow>>([]);
 
   /// The currently selected display (null if none selected).
   final selectedDisplay = signal<DisplayInfo?>(null);
@@ -119,6 +123,7 @@ class DeviceSession {
     selectedDevice.value = device;
     selectedDisplay.value = null;
     displays.value = [];
+    overlayWindows.value = [];
     await refreshDisplays();
   }
 
@@ -134,6 +139,7 @@ class DeviceSession {
       final output = await _adb.dumpsysDisplay(device.serial);
       final parsed = parseDisplays(output);
       displays.value = parsed;
+      overlayWindows.value = parseOverlayWindows(output);
 
       // If previously selected display is gone, deselect
       if (selectedDisplay.value != null &&
@@ -147,6 +153,53 @@ class DeviceSession {
     }
   }
 
+  /// Look up how to capture [displayId] by cropping its host display.
+  ///
+  /// Returns null when [displayId] is not a simulated overlay display, when the
+  /// overlay is currently hidden, or when the host display's size is unknown —
+  /// in all of those cases there is nothing sensible to crop.
+  ///
+  /// This re-reads `dumpsys display` rather than using the cached values from
+  /// [refreshDisplays], because the user can move or resize the overlay window
+  /// at any time and a stale rect silently mirrors the wrong pixels.
+  Future<OverlayCaptureSource?> resolveOverlaySource(int displayId) async {
+    final device = selectedDevice.value;
+    if (device == null || !device.isOnline) return null;
+
+    final output = await _adb.dumpsysDisplay(device.serial);
+    final overlays = parseOverlayWindows(output);
+    overlayWindows.value = overlays;
+
+    OverlayWindow? overlay;
+    for (final candidate in overlays) {
+      if (candidate.displayId == displayId) {
+        overlay = candidate;
+        break;
+      }
+    }
+    if (overlay == null || !overlay.visible) return null;
+
+    // Overlay displays are always composited onto the primary display.
+    const hostDisplayId = 0;
+    final parsedDisplays = parseDisplays(output);
+    DisplayInfo? host;
+    for (final candidate in parsedDisplays) {
+      if (candidate.id == hostDisplayId) {
+        host = candidate;
+        break;
+      }
+    }
+    if (host == null) return null;
+
+    return OverlayCaptureSource(
+      hostDisplayId: hostDisplayId,
+      hostWidth: host.width,
+      hostHeight: host.height,
+      cropRect: overlay.windowRect,
+      overlay: overlay,
+    );
+  }
+
   /// Select a display for mirroring and interaction.
   void selectDisplay(DisplayInfo display) {
     selectedDisplay.value = display;
@@ -157,6 +210,7 @@ class DeviceSession {
     selectedDevice.value = null;
     selectedDisplay.value = null;
     devices.value = [];
+    overlayWindows.value = [];
     displays.value = [];
     error.value = null;
   }

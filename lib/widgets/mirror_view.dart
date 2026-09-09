@@ -18,6 +18,7 @@ class MirrorView extends StatelessWidget {
         final capturing = mirrorController.isCapturing.value;
         final currentFps = mirrorController.fps.value;
         final err = mirrorController.error.value;
+        final mode = mirrorController.mode.value;
 
         if (frame == null) {
           return _buildWaitingState(capturing, err);
@@ -34,6 +35,16 @@ class MirrorView extends StatelessWidget {
                 filterQuality: FilterQuality.medium,
               ),
             ),
+            if (mode == MirrorMode.overlayCrop)
+              Positioned(
+                top: 8,
+                left: 8,
+                child: _OverlayModeBadge(
+                  reason: mirrorController.fallbackReason.value,
+                  scale: mirrorController.overlaySource.value?.overlay
+                      .renderScale,
+                ),
+              ),
             if (capturing)
               Positioned(
                 top: 8,
@@ -82,6 +93,70 @@ class MirrorView extends StatelessWidget {
             Text('Select a display to start mirroring', style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.25))),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Badge shown while the mirror is cropping the overlay out of the host
+/// display, so a degraded frame is never mistaken for a direct capture.
+class _OverlayModeBadge extends StatelessWidget {
+  final String? reason;
+  final double? scale;
+
+  const _OverlayModeBadge({this.reason, this.scale});
+
+  @override
+  Widget build(BuildContext context) {
+    const amber = Color(0xFFD29922);
+
+    final details = <String>[
+      if (reason != null) 'Direct capture failed: $reason',
+      'Cropped from the primary display screenshot. The overlay window is '
+          'drawn semi-transparently and its title sits over the content, so '
+          'colors and the top edge are not exact.',
+      if (scale != null && scale! < 0.99)
+        'The overlay is scaled to ${(scale! * 100).round()}% of the display '
+            'resolution, so the frame carries less detail than the display.',
+      'Touch input is unaffected — it still targets the display at its full '
+          'resolution.',
+    ];
+
+    return Tooltip(
+      message: details.join('\n\n'),
+      waitDuration: const Duration(milliseconds: 300),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: amber.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: amber.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.crop, size: 12, color: amber),
+            const SizedBox(width: 6),
+            const Text(
+              'Overlay crop',
+              style: TextStyle(
+                fontSize: 11,
+                color: amber,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            if (scale != null && scale! < 0.99) ...[
+              const SizedBox(width: 6),
+              Text(
+                '${(scale! * 100).round()}%',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: amber.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
